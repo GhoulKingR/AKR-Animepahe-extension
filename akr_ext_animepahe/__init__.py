@@ -1,0 +1,1 @@
+from .animepahe import AnimeExtension as Extension
