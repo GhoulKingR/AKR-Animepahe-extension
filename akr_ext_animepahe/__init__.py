@@ -1,1 +1,1 @@
-from .animepahe import AnimeExtension as Extension
+from .animepahe import AnimePahe as Extension
