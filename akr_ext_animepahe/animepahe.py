@@ -3,7 +3,7 @@ import math
 import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from akr_extensions import AnimeExtension
+from akr_extensions_sdk import AnimeExtension
 
 
 class AnimePahe(AnimeExtension):
