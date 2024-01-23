@@ -1,7 +1,7 @@
 import time
 import math
 import json
-import requests
+import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from akr_extensions_sdk import AnimeExtension
@@ -9,32 +9,34 @@ from akr_extensions_sdk import AnimeExtension
 
 class AnimePahe(AnimeExtension):
 
-    def run (self, anime_name):
-        self.search(anime_name)
-        self.list_anime()
-        self.get_anime_choice()
-        self.get_anime_details()
-        self.get_episode()
-        self.download_episode()
-        self.quit()
-    
-    def search(self, anime_name):
-        # Prepare driver
+    def __init__(self, debug):
+        AnimeExtension.__init__(self, debug)
         options = webdriver.ChromeOptions()
+        prefs = {"download.default_directory" : os.getcwd() }
         options.add_argument("start-maximized")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
-        driver = webdriver.Chrome(options=options)
+        options.add_experimental_option("prefs",prefs)
+        self._driver = webdriver.Chrome(options=options)
 
-        driver.get(f"https://animepahe.ru/api?m=search&q={anime_name}")
+    def run (self, anime_name):
+        self.search(anime_name)
+        self.list_anime()
+        self.get_anime_choice() # super class
+        self.get_anime_details()
+        self.get_episode()
+        self.download_episode()
+    
+    def search(self, anime_name):
+        self._driver.get(f"https://animepahe.ru/api?m=search&q={anime_name}")
         input("You need to solve a captcha before proceeding. "
               "You chrome would be opened for you to solve it. "
               "Once you've solved it come to the terminal where you're "
               "running the app and press the enter key to proceed."
         )
-        text =  driver.find_element(By.TAG_NAME, "pre")
+        text =  self._driver.find_element(By.TAG_NAME, "pre")
         self.jsonres = json.loads(text.get_attribute("innerHTML"))
-        driver.quit()
+        
         
 
     def list_anime(self):
@@ -49,40 +51,18 @@ class AnimePahe(AnimeExtension):
         )
 
     def get_anime_details(self):
-        # Prepare driver
-        options = webdriver.ChromeOptions()
-        options.add_argument("start-maximized")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        driver = webdriver.Chrome(options=options)
-
-        driver.get(
+        self._driver.get(
             f"https://animepahe.ru/api?m=release&id={self.jsonres['data'][self._choice-1]['session']}&sort=episode_desc&page=1"
         )
-        input("You need to solve a captcha before proceeding. "
-              "You chrome would be opened for you to solve it. "
-              "Once you've solved it come to the terminal where you're "
-              "running the app and press the enter key to proceed."
-        )
-        text =  driver.find_element(By.TAG_NAME, "pre")
+        text =  self._driver.find_element(By.TAG_NAME, "pre")
         self.anime_details = json.loads(text.get_attribute("innerHTML"))
-        driver.quit()
     
     def get_episode(self): # This will cover other things until the download
-        # Get episode link
-        options = webdriver.ChromeOptions()
-        options.add_argument("start-maximized")
-        options.add_argument("--headless")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        driver = webdriver.Chrome(options=options)
-
-        driver.get(
+        self._driver.get(
             f"https://animepahe.ru/api?m=release&id={self.jsonres['data'][self._choice-1]['session']}&sort=episode_desc&page=1"
         )
         episode = self._ask_episode()
         episode_link = self._get_episode_link(episode)
-        driver.quit()
         
         # Get quality lists
         self.quality_link = self._which_quality(episode_link)
@@ -90,56 +70,31 @@ class AnimePahe(AnimeExtension):
 
 
     def download_episode(self):
-        options = webdriver.ChromeOptions()
-        options.add_argument("start-maximized")
-        options.add_argument("--headless")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        driver = webdriver.Chrome(options=options)
-
-        driver.get(self.quality_link)
+        self._driver.get(self.quality_link)
 
         # Get link from continue button
         print("Downloading...")
         print("Please wait for it to begin...")
         for i in range(1, 6):
             try:
-                a = driver.find_element(By.XPATH, "//a[text()='Continue']")
+                a = self._driver.find_element(By.XPATH, "//a[text()='Continue']")
                 link_to_download = a.get_attribute("href")
-                driver.get(link_to_download)
+                self._driver.get(link_to_download)
                 break
             except:
                 # print(f"{i}/{5} retries, waiting 3s")
                 time.sleep(3)
 
-        # find download link and token
-        link = driver.find_element(By.CSS_SELECTOR, ".main .download form").get_attribute("action")
-        token = driver.find_element(By.CSS_SELECTOR, ".main .download form input").get_attribute("value")
-        
-        # Preper header and payload
-        cookies = '; '.join([
-            f"{cookie['name']}={cookie['value']}"
-            for cookie in driver.get_cookies()
-        ])
-        data = {
-            "_token": token
-        }
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
-            'Referer': 'https://kwik.cx/f/r6gCLSqIe9Nh',
-            'Origin': 'https://kwik.cx',
-            'Host': 'kwik.cx',
-            'Cookie': cookies
-        }
-        driver.quit()
+        self._driver.execute_script("""
+            document.querySelector("body > div:last-of-type").style.display = "none"
+        """)
 
-        # Download anime
-        response = requests.post(link, data=data, headers=headers, stream=True)
-        file_name = response.headers.get('Content-Disposition').split('=')[1]
-        self.download_to_file(response, file_name)
-
-    def quit(self):    # Close anything it needs to
-        pass
+        try:
+            # click button
+            self._driver.find_element(By.CSS_SELECTOR, ".download-form button").click()
+            print("Leaving browser tab open, while downloading...")
+        except:
+            print("Something is up here, please check")
 
     def _ask_episode(self):
         total_episodes = self.anime_details['total']
@@ -154,50 +109,26 @@ class AnimePahe(AnimeExtension):
         page = math.ceil(episode/30)
         position = (episode - (page - 1) * 30) - 1
 
-        # Prepare driver
-        options = webdriver.ChromeOptions()
-        options.add_argument("start-maximized")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        driver = webdriver.Chrome(options=options)
-
-        driver.get(
+        self._driver.get(
             f"https://animepahe.ru/api?m=release&id={self.jsonres['data'][self._choice-1]['session']}&sort=episode_asc&page={page}"
         )
-        input("You need to solve a captcha before proceeding. "
-              "You chrome would be opened for you to solve it. "
-              "Once you've solved it come to the terminal where you're "
-              "running the app and press the enter key to proceed."
-        )
-        text =  driver.find_element(By.TAG_NAME, "pre")
+        text =  self._driver.find_element(By.TAG_NAME, "pre")
         response = json.loads(text.get_attribute("innerHTML"))
-        driver.quit()
         
         return f"https://animepahe.ru/play/{self.jsonres['data'][self._choice-1]['session']}/{response['data'][position]['session']}"
 
 
     def _which_quality(self, episode_link):
         # Get quality the user wants
-        print("Episode link:", episode_link)
+        if (self._debug):
+            print("Episode link:", episode_link)
 
-        options = webdriver.ChromeOptions()
-        options.add_argument("start-maximized")
-        # options.add_argument("--headless")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        driver = webdriver.Chrome(options=options)
-        driver.get(episode_link)
+        self._driver.get(episode_link)
 
         # time.sleep(0)
         qualities = []
 
-        input("You need to solve a captcha before proceeding. "
-              "You chrome would be opened for you to solve it. "
-              "Once you've solved it come to the terminal where you're "
-              "running the app and press the enter key to proceed."
-        )
-
-        for a in driver.find_elements(By.CSS_SELECTOR, "#pickDownload .dropdown-item"):
+        for a in self._driver.find_elements(By.CSS_SELECTOR, "#pickDownload .dropdown-item"):
             quality_text = a.get_attribute("innerText").split(" ")
             sub_dub = 'dub' if quality_text[-1] == 'eng' else 'sub'
             quality = quality_text[2]
@@ -207,8 +138,6 @@ class AnimePahe(AnimeExtension):
                 "link": a.get_attribute("href")
             }
             qualities.append(quality)
-        
-        driver.quit()
         
         text = "\nHere are qualities found:\n"
         text += "\n".join([
@@ -221,5 +150,5 @@ class AnimePahe(AnimeExtension):
         if 0 <= ans and ans < len(qualities):
             return qualities[ans]["link"]
         else:
-            return self._which_quality(driver)
+            return self._which_quality(episode_link)
 
